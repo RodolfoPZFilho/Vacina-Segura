@@ -1,0 +1,18 @@
+# Segredos (token e senha do InfluxDB)
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Node / Vite
+node_modules/
+dist/
+
+# Editores e sistema
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
