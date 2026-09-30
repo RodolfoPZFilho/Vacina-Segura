@@ -6,6 +6,7 @@
  * LED vermelho = fora da faixa
  *
  * No Wokwi: durante a simulação, clique no DHT22 para alterar a temperatura.
+ * A cada 20 s é publicada uma leitura, com uma pequena variação aleatória somada ao sensor.
  */
 #include <WiFi.h>
 #include <PubSubClient.h>
@@ -32,7 +33,19 @@ const int PINO_LED_ALERTA = 4;
 
 const float TEMP_MIN = 2.0;
 const float TEMP_MAX = 8.0;
-const unsigned long INTERVALO_MS = 5000;  // uma leitura a cada 5 s
+const unsigned long INTERVALO_MS = 20000;  // uma leitura a cada 20 s
+
+// Variacao aleatoria somada a leitura do sensor, para a simulacao nao ficar
+// com valor fixo. Passeio aleatorio limitado: muda um pouco a cada leitura.
+const float VARIACAO_MAX_TEMP = 1.5;   // +/- graus Celsius
+const float VARIACAO_MAX_UMID = 6.0;   // +/- pontos percentuais
+float desvioTemp = 0;
+float desvioUmid = 0;
+
+float passoAleatorio(float atual, float passo, float limite) {
+  float novo = atual + (random(-100, 101) / 100.0) * passo;
+  return constrain(novo, -limite, limite);
+}
 
 DHTesp dht;
 WiFiClient wifi;
@@ -87,13 +100,18 @@ void loop() {
     return;
   }
 
-  bool dentroDaFaixa = leitura.temperature >= TEMP_MIN && leitura.temperature <= TEMP_MAX;
+  desvioTemp = passoAleatorio(desvioTemp, 0.4, VARIACAO_MAX_TEMP);
+  desvioUmid = passoAleatorio(desvioUmid, 1.5, VARIACAO_MAX_UMID);
+  float temperatura = leitura.temperature + desvioTemp;
+  float umidade = constrain(leitura.humidity + desvioUmid, 0.0f, 100.0f);
+
+  bool dentroDaFaixa = temperatura >= TEMP_MIN && temperatura <= TEMP_MAX;
   digitalWrite(PINO_LED_OK, dentroDaFaixa ? HIGH : LOW);
   digitalWrite(PINO_LED_ALERTA, dentroDaFaixa ? LOW : HIGH);
 
   char payload[80];
   snprintf(payload, sizeof(payload), "{\"temperatura\":%.2f,\"umidade\":%.1f}",
-           leitura.temperature, leitura.humidity);
+           temperatura, umidade);
   mqtt.publish(TOPICO, payload);
   Serial.printf("Publicado: %s %s\n", payload, dentroDaFaixa ? "" : "<- FORA DA FAIXA");
 }
