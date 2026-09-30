@@ -17,6 +17,7 @@ PERIODOS = {
     "6h": "2m",
     "24h": "10m",
     "7d": "1h",
+    "10d": "1h",
 }
 
 _BASE = f'from(bucket: "{config.INFLUX_BUCKET}")'

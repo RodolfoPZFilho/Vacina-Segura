@@ -1,6 +1,6 @@
 export type Status = 'ok' | 'abaixo' | 'acima' | 'sem_dados'
 
-export type Periodo = '15m' | '1h' | '6h' | '24h' | '7d'
+export type Periodo = '15m' | '1h' | '6h' | '24h' | '7d' | '10d'
 
 export interface Geladeira {
   ubs: string

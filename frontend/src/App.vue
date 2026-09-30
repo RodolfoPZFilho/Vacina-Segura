@@ -5,8 +5,8 @@ import GraficoHistorico from './components/GraficoHistorico.vue'
 import { api } from './services/api'
 import type { FaixaSegura, Geladeira, Historico, LeituraAtual, Periodo } from './types'
 
-const ATUALIZACAO_MS = 5000
-const SEM_SINAL_MS = 60_000
+const ATUALIZACAO_MS = 30_000 // o painel consulta a API a cada 30 s
+const SEM_SINAL_MS = 90_000 // folga para o intervalo de 30 s do painel
 
 const periodos: { valor: Periodo; rotulo: string }[] = [
   { valor: '15m', rotulo: '15 min' },
@@ -14,6 +14,7 @@ const periodos: { valor: Periodo; rotulo: string }[] = [
   { valor: '6h', rotulo: '6 h' },
   { valor: '24h', rotulo: '24 h' },
   { valor: '7d', rotulo: '7 dias' },
+  { valor: '10d', rotulo: '10 dias' },
 ]
 
 const faixa = ref<FaixaSegura>({ temp_min: 2, temp_max: 8 })
@@ -37,7 +38,7 @@ const semSinal = computed(
 const situacao = computed(() => {
   if (!atual.value) return { classe: 'neutro', titulo: 'Aguardando leituras', texto: 'Nenhum dado recebido ainda.' }
   if (semSinal.value)
-    return { classe: 'neutro', titulo: 'Sem sinal do sensor', texto: 'A última leitura tem mais de 1 minuto.' }
+    return { classe: 'neutro', titulo: 'Sem sinal do sensor', texto: 'A última leitura tem mais de 1 minuto e meio.' }
   const { temp_min, temp_max } = faixa.value
   if (atual.value.status === 'acima')
     return { classe: 'alerta', titulo: 'Temperatura ACIMA da faixa', texto: `Verifique a porta e a geladeira (máx. ${temp_max} °C).` }

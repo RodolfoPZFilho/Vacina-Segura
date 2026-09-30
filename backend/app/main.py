@@ -13,7 +13,7 @@ from . import config, influx, mqtt_consumer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-Periodo = Literal["15m", "1h", "6h", "24h", "7d"]
+Periodo = Literal["15m", "1h", "6h", "24h", "7d", "10d"]
 # Identificadores aceitos: letras, numeros, _ e - (evita injecao na consulta Flux)
 ID = Annotated[str, Query(pattern=r"^[A-Za-z0-9_-]{1,32}$")]
 
