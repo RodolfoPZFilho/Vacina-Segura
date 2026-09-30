@@ -56,6 +56,16 @@ Na primeira execucao o script configura o InfluxDB, cria o ambiente virtual do P
 
 Para encerrar: `powershell -ExecutionPolicy Bypass -File parar.ps1`
 
+## Acesso pela internet
+
+Com o sistema rodando (`iniciar.ps1`), execute:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File publicar-web.ps1
+```
+
+O script usa o Cloudflare Tunnel (`cloudflared`) e mostra um link publico `https://....trycloudflare.com` que abre o dashboard de qualquer maquina. O link so funciona enquanto este computador e a janela do script estiverem abertos, e muda a cada execucao. Apenas o dashboard e a API de leitura ficam expostos; o InfluxDB e o Mosquitto continuam acessiveis so localmente.
+
 ## Dispositivo no Wokwi
 
 1. Em [wokwi.com](https://wokwi.com), crie um projeto **ESP32** (Arduino).
