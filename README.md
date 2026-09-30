@@ -73,6 +73,16 @@ O script usa o Cloudflare Tunnel (`cloudflared`) e mostra um link publico `https
 3. Na aba **Library Manager**, adicione `PubSubClient` e `DHT sensor library for ESPx`.
 4. Clique em Play. Durante a simulacao, clique no DHT22 para mudar a temperatura: acima de 8 °C o LED vermelho acende e o dashboard mostra o alerta.
 
+### Alternativa: compilar no proprio computador
+
+Se o site do Wokwi mostrar "Build Servers Busy", compile localmente (requer Arduino CLI com o pacote esp32 e as duas bibliotecas acima) e simule pela extensao Wokwi do VS Code:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File firmware\compilar-firmware.ps1
+```
+
+Depois abra a pasta `firmware` no VS Code e use F1 > **Wokwi: Start Simulator**.
+
 ## Testar sem o Wokwi
 
 O simulador publica no mesmo broker e topico que o ESP32:

@@ -16,3 +16,6 @@ dist/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Firmware compilado localmente
+firmware/build/
