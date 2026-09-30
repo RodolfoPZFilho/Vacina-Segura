@@ -5,8 +5,13 @@
  * LED verde = temperatura dentro da faixa segura (2 a 8 °C)
  * LED vermelho = fora da faixa
  *
- * No Wokwi: durante a simulação, clique no DHT22 para alterar a temperatura.
- * A cada 20 s é publicada uma leitura, com uma pequena variação aleatória somada ao sensor.
+ * A cada 20 s é publicada uma leitura: o valor do sensor somado a uma variação
+ * aleatória. Além da oscilação normal, a cada 2 a 4 minutos acontece uma
+ * "excursão" que leva a temperatura para FORA da faixa segura, alternando entre
+ * acima de 8 °C e abaixo de 2 °C, e depois volta ao normal.
+ * (Os valores assumem o DHT22 em 5 °C, o padrão do diagram.json.)
+ *
+ * No Wokwi: durante a simulação, clique no DHT22 para alterar a temperatura base.
  */
 #include <WiFi.h>
 #include <PubSubClient.h>
@@ -35,22 +40,60 @@ const float TEMP_MIN = 2.0;
 const float TEMP_MAX = 8.0;
 const unsigned long INTERVALO_MS = 20000;  // uma leitura a cada 20 s
 
-// Variacao aleatoria somada a leitura do sensor, para a simulacao nao ficar
-// com valor fixo. Passeio aleatorio limitado: muda um pouco a cada leitura.
-const float VARIACAO_MAX_TEMP = 1.5;   // +/- graus Celsius
-const float VARIACAO_MAX_UMID = 6.0;   // +/- pontos percentuais
+// ---------- Aleatoriedade ----------
+// Oscilação normal: cada leitura difere da anterior em até +/-1,2 °C e +/-5 %,
+// com tendência de voltar ao valor do sensor.
+const float PASSO_TEMP = 1.2;
+const float PASSO_UMID = 5.0;
+const float RETORNO    = 0.6;   // fração do desvio que se mantém de uma leitura para a outra
+
+// Excursões para fora da faixa (garantidas, alternando acima/abaixo)
+const int   LEITURAS_ENTRE_EXCURSOES_MIN = 6;   // 6 x 20 s = 2 min
+const int   LEITURAS_ENTRE_EXCURSOES_MAX = 12;  // 12 x 20 s = 4 min
+const int   DURACAO_EXCURSAO_MIN = 4;           // leituras
+const int   DURACAO_EXCURSAO_MAX = 6;
+
 float desvioTemp = 0;
 float desvioUmid = 0;
-
-float passoAleatorio(float atual, float passo, float limite) {
-  float novo = atual + (random(-100, 101) / 100.0) * passo;
-  return constrain(novo, -limite, limite);
-}
+int   leiturasAteExcursao = 0;
+int   excursaoRestante = 0;
+float alvoExcursao = 0;
+bool  proximaParaCima = true;
 
 DHTesp dht;
 WiFiClient wifi;
 PubSubClient mqtt(wifi);
 unsigned long ultimaLeitura = 0;
+
+// Número aleatório entre -1 e +1
+float aleatorio() {
+  return random(-1000, 1001) / 1000.0;
+}
+
+void atualizarDesvios() {
+  if (excursaoRestante > 0) {
+    // Em excursão: aproxima rapidamente do alvo fora da faixa
+    desvioTemp += (alvoExcursao - desvioTemp) * 0.6 + aleatorio() * 0.3;
+    desvioUmid = desvioUmid * RETORNO + (alvoExcursao > 0 ? 8.0 : -4.0) + aleatorio() * PASSO_UMID;
+    excursaoRestante--;
+  } else {
+    // Oscilação normal em torno do valor do sensor
+    desvioTemp = desvioTemp * RETORNO + aleatorio() * PASSO_TEMP;
+    desvioUmid = desvioUmid * RETORNO + aleatorio() * PASSO_UMID;
+
+    if (--leiturasAteExcursao <= 0) {
+      // Começa uma nova excursão, alternando o lado
+      excursaoRestante = random(DURACAO_EXCURSAO_MIN, DURACAO_EXCURSAO_MAX + 1);
+      alvoExcursao = proximaParaCima ? random(450, 651) / 100.0    // ~9,5 a 11,5 °C
+                                     : -random(380, 461) / 100.0;  // ~0,4 a 1,2 °C
+      proximaParaCima = !proximaParaCima;
+      leiturasAteExcursao = random(LEITURAS_ENTRE_EXCURSOES_MIN, LEITURAS_ENTRE_EXCURSOES_MAX + 1);
+      Serial.printf(">> Excursao %s da faixa segura\n", alvoExcursao > 0 ? "ACIMA" : "ABAIXO");
+    }
+  }
+  desvioTemp = constrain(desvioTemp, -7.0f, 7.0f);
+  desvioUmid = constrain(desvioUmid, -20.0f, 20.0f);
+}
 
 void conectarWifi() {
   Serial.print("Conectando ao Wi-Fi");
@@ -81,6 +124,9 @@ void setup() {
   pinMode(PINO_LED_ALERTA, OUTPUT);
   dht.setup(PINO_DHT, DHTesp::DHT22);
 
+  randomSeed(esp_random());
+  leiturasAteExcursao = random(LEITURAS_ENTRE_EXCURSOES_MIN, LEITURAS_ENTRE_EXCURSOES_MAX + 1);
+
   conectarWifi();
   mqtt.setServer(MQTT_HOST, MQTT_PORTA);
   conectarMqtt();
@@ -91,7 +137,7 @@ void loop() {
   if (!mqtt.connected()) conectarMqtt();
   mqtt.loop();
 
-  if (millis() - ultimaLeitura < INTERVALO_MS) return;
+  if (ultimaLeitura != 0 && millis() - ultimaLeitura < INTERVALO_MS) return;
   ultimaLeitura = millis();
 
   TempAndHumidity leitura = dht.getTempAndHumidity();
@@ -100,8 +146,7 @@ void loop() {
     return;
   }
 
-  desvioTemp = passoAleatorio(desvioTemp, 0.4, VARIACAO_MAX_TEMP);
-  desvioUmid = passoAleatorio(desvioUmid, 1.5, VARIACAO_MAX_UMID);
+  atualizarDesvios();
   float temperatura = leitura.temperature + desvioTemp;
   float umidade = constrain(leitura.humidity + desvioUmid, 0.0f, 100.0f);
 
