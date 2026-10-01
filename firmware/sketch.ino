@@ -12,6 +12,10 @@
  * (Os valores assumem o DHT22 em 5 °C, o padrão do diagram.json.)
  *
  * No Wokwi: durante a simulação, clique no DHT22 para alterar a temperatura base.
+ *
+ * CHAVE "VARIACAO" (slide switch no GPIO 13): liga/desliga a variação aleatória.
+ *   DESLIGADA: publica exatamente o valor do DHT22 e publica na hora sempre que ele muda.
+ *   LIGADA:    soma a variação aleatória e as saídas periódicas da faixa.
  */
 #include <WiFi.h>
 #include <PubSubClient.h>
@@ -35,6 +39,7 @@ const char* TOPICO     = "vacinasegura/35kr1sud/ubs/ubs01/geladeira/g01";
 const int PINO_DHT    = 15;
 const int PINO_LED_OK = 2;
 const int PINO_LED_ALERTA = 4;
+const int PINO_CHAVE_VARIACAO = 13;  // chave no circuito: liga/desliga a variação aleatória
 
 const float TEMP_MIN = 2.0;
 const float TEMP_MAX = 8.0;
@@ -64,6 +69,14 @@ DHTesp dht;
 WiFiClient wifi;
 PubSubClient mqtt(wifi);
 unsigned long ultimaLeitura = 0;
+unsigned long ultimaChecagem = 0;
+int estadoChave = -1;
+float ultimoValorSensor = NAN;
+
+// Chave ligada a GND => LOW => variação LIGADA. Chave aberta => HIGH (pull-up) => DESLIGADA.
+bool variacaoLigada() {
+  return digitalRead(PINO_CHAVE_VARIACAO) == LOW;
+}
 
 // Número aleatório entre -1 e +1
 float aleatorio() {
@@ -122,6 +135,7 @@ void setup() {
   Serial.begin(115200);
   pinMode(PINO_LED_OK, OUTPUT);
   pinMode(PINO_LED_ALERTA, OUTPUT);
+  pinMode(PINO_CHAVE_VARIACAO, INPUT_PULLUP);
   dht.setup(PINO_DHT, DHTesp::DHT22);
 
   randomSeed(esp_random());
@@ -137,8 +151,21 @@ void loop() {
   if (!mqtt.connected()) conectarMqtt();
   mqtt.loop();
 
-  if (ultimaLeitura != 0 && millis() - ultimaLeitura < INTERVALO_MS) return;
-  ultimaLeitura = millis();
+  // Confere a chave e o sensor a cada 2 s (intervalo minimo do DHT22)
+  if (millis() - ultimaChecagem < 2000) return;
+  ultimaChecagem = millis();
+
+  bool publicarAgora = (ultimaLeitura == 0) || (millis() - ultimaLeitura >= INTERVALO_MS);
+
+  int chave = variacaoLigada() ? 1 : 0;
+  if (chave != estadoChave) {
+    Serial.printf(">> Variacao das medicoes: %s\n", chave ? "LIGADA" : "DESLIGADA");
+    if (estadoChave != -1) publicarAgora = true;  // mostra o efeito na hora
+    estadoChave = chave;
+    desvioTemp = 0;
+    desvioUmid = 0;
+    excursaoRestante = 0;
+  }
 
   TempAndHumidity leitura = dht.getTempAndHumidity();
   if (dht.getStatus() != DHTesp::ERROR_NONE) {
@@ -146,9 +173,16 @@ void loop() {
     return;
   }
 
-  atualizarDesvios();
-  float temperatura = leitura.temperature + desvioTemp;
-  float umidade = constrain(leitura.humidity + desvioUmid, 0.0f, 100.0f);
+  // Com a variação desligada, publica na hora quando o DHT22 muda
+  if (!chave && !isnan(ultimoValorSensor) && fabs(leitura.temperature - ultimoValorSensor) >= 0.1) publicarAgora = true;
+  ultimoValorSensor = leitura.temperature;
+
+  if (!publicarAgora) return;
+  ultimaLeitura = millis();
+
+  if (chave) atualizarDesvios();
+  float temperatura = leitura.temperature + (chave ? desvioTemp : 0);
+  float umidade = constrain(leitura.humidity + (chave ? desvioUmid : 0), 0.0f, 100.0f);
 
   bool dentroDaFaixa = temperatura >= TEMP_MIN && temperatura <= TEMP_MAX;
   digitalWrite(PINO_LED_OK, dentroDaFaixa ? HIGH : LOW);
