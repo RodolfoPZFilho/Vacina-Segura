@@ -10,11 +10,16 @@
   },
   "dependencies": {
     "echarts": "^6.1.0",
+    "markdown-it": "^14.3.3",
+    "three": "^0.171.0",
     "vue": "^3.5.42",
-    "vue-echarts": "^8.3.1"
+    "vue-echarts": "^8.3.1",
+    "vue-router": "^4.6.5"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.2.0",
     "@types/node": "^24.13.3",
+    "@types/three": "^0.171.0",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vue/tsconfig": "^0.9.1",
     "typescript": "~6.0.2",

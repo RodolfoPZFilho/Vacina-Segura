@@ -1,0 +1,254 @@
+# VacinaSegura - 2o bimestre (AIoT): sobe tudo com um unico comando.
+#
+#   1) gere os segredos uma vez:  .\gerar-segredos.ps1   (Windows)   ou   ./gerar-segredos.sh
+#   2) docker compose up -d --build
+#   3) abra http://localhost:8080
+#
+# Somente o frontend e publicado para a rede. As interfaces de InfluxDB, RabbitMQ e
+# PostgreSQL (Adminer) ficam apenas em 127.0.0.1, para estudo em aula.
+
+x-servico-python: &servico-python
+  build: ./servicos
+  image: vacinasegura/servicos:2.0
+  restart: unless-stopped
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: ["no-new-privileges:true"]
+  healthcheck:
+    test: ["CMD", "python", "-m", "vacinasegura.comum.saude"]
+    interval: 15s
+    timeout: 5s
+    retries: 4
+    start_period: 30s
+
+x-rabbit-pronto: &rabbit-pronto
+  rabbit-init:
+    condition: service_completed_successfully
+
+services:
+  # ------------------------------------------------------------------ borda IoT
+  mosquitto:
+    build: ./infra/mosquitto
+    image: vacinasegura/mosquitto:2.0
+    restart: unless-stopped
+    environment:
+      MQTT_SIMULADOR_SENHA: ${MQTT_SIMULADOR_SENHA:?rode gerar-segredos}
+      MQTT_GATEWAY_SENHA: ${MQTT_GATEWAY_SENHA:?rode gerar-segredos}
+    volumes: [mosquitto-dados:/mosquitto/data]
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_pub -h localhost -u gateway -P \"$$MQTT_GATEWAY_SENHA\" -t vacinasegura/comando/sistema/health -m ok"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  simulador:
+    <<: *servico-python
+    command: ["python", "-m", "vacinasegura.simulador.main"]
+    environment:
+      MQTT_SIMULADOR_SENHA: ${MQTT_SIMULADOR_SENHA}
+      TICK_SEGUNDOS: ${TICK_SEGUNDOS:-5}
+    depends_on:
+      mosquitto: {condition: service_healthy}
+
+  gateway:
+    <<: *servico-python
+    command: ["python", "-m", "vacinasegura.gateway.main"]
+    environment:
+      MQTT_GATEWAY_SENHA: ${MQTT_GATEWAY_SENHA}
+      RABBIT_GATEWAY_USUARIO: gateway
+      RABBIT_GATEWAY_SENHA: ${RABBIT_GATEWAY_SENHA}
+    depends_on:
+      <<: *rabbit-pronto
+      mosquitto: {condition: service_healthy}
+
+  # ------------------------------------------------------------------ barramento
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBIT_ADMIN_USUARIO:?rode gerar-segredos}
+      RABBITMQ_DEFAULT_PASS: ${RABBIT_ADMIN_SENHA:?rode gerar-segredos}
+      RABBITMQ_DEFAULT_VHOST: vacinasegura
+    ports: ["127.0.0.1:15672:15672"]
+    volumes: [rabbitmq-dados:/var/lib/rabbitmq]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 20s
+
+  rabbit-init:
+    <<: *servico-python
+    restart: "no"
+    command: ["python", "-m", "vacinasegura.rabbit_init.main"]
+    healthcheck: {disable: true}
+    environment:
+      RABBIT_ADMIN_USUARIO: ${RABBIT_ADMIN_USUARIO}
+      RABBIT_ADMIN_SENHA: ${RABBIT_ADMIN_SENHA}
+      RABBIT_GATEWAY_SENHA: ${RABBIT_GATEWAY_SENHA}
+      RABBIT_GRAVADOR_SENHA: ${RABBIT_GRAVADOR_SENHA}
+      RABBIT_INFERENCIA_SENHA: ${RABBIT_INFERENCIA_SENHA}
+      RABBIT_LAB_SENHA: ${RABBIT_LAB_SENHA}
+      RABBIT_API_SENHA: ${RABBIT_API_SENHA}
+    depends_on:
+      rabbitmq: {condition: service_healthy}
+
+  # ------------------------------------------------------------------ dados
+  influxdb:
+    image: influxdb:2.7-alpine
+    restart: unless-stopped
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: vacinasegura
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUX_SENHA:?rode gerar-segredos}
+      DOCKER_INFLUXDB_INIT_ORG: vacinasegura
+      DOCKER_INFLUXDB_INIT_BUCKET: leituras
+      DOCKER_INFLUXDB_INIT_RETENTION: 30d
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_TOKEN:?rode gerar-segredos}
+    ports: ["127.0.0.1:8086:8086"]
+    volumes: [influxdb-dados:/var/lib/influxdb2]
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+
+  gravador:
+    <<: *servico-python
+    command: ["python", "-m", "vacinasegura.gravador.main"]
+    environment:
+      RABBIT_GRAVADOR_USUARIO: gravador
+      RABBIT_GRAVADOR_SENHA: ${RABBIT_GRAVADOR_SENHA}
+      INFLUX_TOKEN: ${INFLUX_TOKEN}
+    depends_on:
+      <<: *rabbit-pronto
+      influxdb: {condition: service_healthy}
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vacinasegura
+      POSTGRES_DB: vacinasegura
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?rode gerar-segredos}
+    volumes: [postgres-dados:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vacinasegura -d vacinasegura"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+  adminer:
+    image: adminer:4.8.1
+    restart: unless-stopped
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    ports: ["127.0.0.1:8081:8080"]
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  # ------------------------------------------------------------------ IA
+  lab:
+    <<: *servico-python
+    command: ["python", "-m", "vacinasegura.lab.main"]
+    environment:
+      RABBIT_LAB_USUARIO: lab
+      RABBIT_LAB_SENHA: ${RABBIT_LAB_SENHA}
+      INFLUX_TOKEN: ${INFLUX_TOKEN}
+      LAB_AUTOTREINO: ${LAB_AUTOTREINO:-1}
+    volumes:
+      - modelos:/modelos
+      - dados-lab:/dados
+    depends_on:
+      <<: *rabbit-pronto
+      influxdb: {condition: service_healthy}
+
+  inferencia:
+    <<: *servico-python
+    command: ["python", "-m", "vacinasegura.inferencia.main"]
+    environment:
+      RABBIT_INFERENCIA_USUARIO: inferencia
+      RABBIT_INFERENCIA_SENHA: ${RABBIT_INFERENCIA_SENHA}
+    volumes:
+      - modelos:/modelos:ro
+    depends_on:
+      <<: *rabbit-pronto
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: "-1"
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+    volumes: [ollama-modelos:/root/.ollama]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  ollama-preparar:
+    image: curlimages/curl:8.11.1
+    restart: "no"
+    entrypoint: ["/bin/sh", "/preparar.sh"]
+    environment:
+      OLLAMA_MODELO: ${OLLAMA_MODELO:-llama3.2:1b}
+    volumes: ["./infra/ollama/preparar.sh:/preparar.sh:ro"]
+    depends_on:
+      ollama: {condition: service_healthy}
+
+  # ------------------------------------------------------------------ aplicacao
+  api:
+    <<: *servico-python
+    command: ["uvicorn", "vacinasegura.api.main:app", "--host", "0.0.0.0", "--port", "8000",
+              "--proxy-headers", "--forwarded-allow-ips", "*"]
+    environment:
+      RABBIT_API_USUARIO: api
+      RABBIT_API_SENHA: ${RABBIT_API_SENHA}
+      INFLUX_TOKEN: ${INFLUX_TOKEN}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SEGREDO: ${JWT_SEGREDO:?rode gerar-segredos}
+      ADMIN_SENHA: ${ADMIN_SENHA}
+      OPERADOR_SENHA: ${OPERADOR_SENHA}
+      VISUALIZADOR_SENHA: ${VISUALIZADOR_SENHA}
+      OLLAMA_MODELO: ${OLLAMA_MODELO:-llama3.2:1b}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/saude', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      <<: *rabbit-pronto
+      postgres: {condition: service_healthy}
+      influxdb: {condition: service_healthy}
+      ollama: {condition: service_healthy}
+
+  frontend:
+    build: ./frontend
+    image: vacinasegura/frontend:2.0
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    ports: ["${PORTA_WEB:-8080}:8080"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      api: {condition: service_healthy}
+
+volumes:
+  mosquitto-dados:
+  rabbitmq-dados:
+  influxdb-dados:
+  postgres-dados:
+  ollama-modelos:
+  modelos:
+  dados-lab:

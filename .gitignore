@@ -1,10 +1,13 @@
-# Segredos (token e senha do InfluxDB)
+# Segredos (gerados por gerar-segredos.ps1 / gerar-segredos.sh) - NUNCA versionar
 .env
+secrets/
+usuarios-demo.txt
 
 # Python
 .venv/
 __pycache__/
 *.pyc
+.pytest_cache/
 
 # Node / Vite
 node_modules/
@@ -17,5 +20,5 @@ dist/
 .DS_Store
 Thumbs.db
 
-# Firmware compilado localmente
-firmware/build/
+# Legado (firmware compilado localmente)
+legado/firmware/build/

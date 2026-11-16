@@ -1,0 +1,9 @@
+# Simulador: publica telemetria, escuta comandos
+user simulador
+topic write vacinasegura/telemetria/#
+topic read vacinasegura/comando/#
+
+# Gateway: le telemetria, publica comandos (inclusive a config retida)
+user gateway
+topic read vacinasegura/telemetria/#
+topic write vacinasegura/comando/#
