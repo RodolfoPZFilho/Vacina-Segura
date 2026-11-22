@@ -196,7 +196,7 @@ services:
     restart: "no"
     entrypoint: ["/bin/sh", "/preparar.sh"]
     environment:
-      OLLAMA_MODELO: ${OLLAMA_MODELO:-llama3.2:1b}
+      OLLAMA_MODELO: ${OLLAMA_MODELO:-llama3.2:3b}
     volumes: ["./infra/ollama/preparar.sh:/preparar.sh:ro"]
     depends_on:
       ollama: {condition: service_healthy}
@@ -215,7 +215,7 @@ services:
       ADMIN_SENHA: ${ADMIN_SENHA}
       OPERADOR_SENHA: ${OPERADOR_SENHA}
       VISUALIZADOR_SENHA: ${VISUALIZADOR_SENHA}
-      OLLAMA_MODELO: ${OLLAMA_MODELO:-llama3.2:1b}
+      OLLAMA_MODELO: ${OLLAMA_MODELO:-llama3.2:3b}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/saude', timeout=3)"]
       interval: 15s

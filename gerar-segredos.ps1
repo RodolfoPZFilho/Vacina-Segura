@@ -34,7 +34,7 @@ $v = [ordered]@{
     'ADMIN_SENHA'             = Novo-Segredo 12
     'OPERADOR_SENHA'          = Novo-Segredo 12
     'VISUALIZADOR_SENHA'      = Novo-Segredo 12
-    'OLLAMA_MODELO'           = 'llama3.2:1b'
+    'OLLAMA_MODELO'           = 'llama3.2:3b'
     'TICK_SEGUNDOS'           = '5'
     'PORTA_WEB'               = '8080'
 }

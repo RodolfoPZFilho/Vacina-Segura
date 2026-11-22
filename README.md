@@ -46,7 +46,7 @@ flowchart TB
 | Séries temporais | InfluxDB 2 | Leituras e previsões ao vivo (bucket `leituras`) e amostra sintética (bucket `lab`) | `servicos/vacinasegura/gravador` |
 | Relacional | PostgreSQL 16 | Usuários, dispositivos, regras, configurações, alertas, jobs, modelos e auditoria | `servicos/vacinasegura/api/db.py` |
 | IA | scikit-learn | Gerador sintético, treino (RUL e saúde) e inferência em tempo real | `servicos/vacinasegura/lab`, `inferencia` |
-| LLM local | Ollama (`llama3.2:1b`, em CPU) | Assistente que responde sobre os dados, sem nuvem | `servicos/vacinasegura/api/assistente.py` |
+| LLM local | Ollama (`llama3.2:3b`, em CPU) | Assistente que responde sobre os dados, sem nuvem | `servicos/vacinasegura/api/assistente.py` |
 | Backend | Python + FastAPI | API REST, WebSocket, regra de negócio, JWT e auditoria | `servicos/vacinasegura/api` |
 | Frontend | Vue 3 + TypeScript + Vite | Dashboard (ECharts), gêmeo 3D (Three.js) e demais páginas | `frontend/` |
 | Infraestrutura | Docker + Docker Compose | Sobe tudo com um comando, com healthchecks e ordem de subida | `docker-compose.yml` |
@@ -146,7 +146,7 @@ O script mostra as senhas dos usuários de demonstração, que também ficam no 
 
 Na primeira subida:
 
-- o Docker baixa as imagens e o modelo `llama3.2:1b` (~1,3 GB);
+- o Docker baixa as imagens e o modelo `llama3.2:3b` (~2 GB);
 - o serviço `lab` gera um conjunto de dados padrão e treina o primeiro modelo, o que leva 1 ou 2 minutos;
 - acompanhe com `docker compose ps` e `docker compose logs -f lab ollama-preparar`.
 
@@ -176,7 +176,7 @@ Crie `%UserProfile%\.wslconfig` com:
 memory=8GB
 ```
 
-Depois rode `wsl --shutdown` e abra o Docker Desktop de novo. Em máquinas com 16 GB ou mais dá para usar um modelo maior: troque `OLLAMA_MODELO=llama3.2:3b` no `.env`.
+Depois rode `wsl --shutdown` e abra o Docker Desktop de novo. O padrão é o `llama3.2:3b`, que responde melhor. Em máquinas com menos de 12 GB de RAM, troque para `OLLAMA_MODELO=llama3.2:1b` no `.env` (mais leve, respostas mais simples).
 
 ### Comandos úteis
 

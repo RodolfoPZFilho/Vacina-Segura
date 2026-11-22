@@ -20,7 +20,7 @@ from . import db
 from .tempo_real import estado
 
 OLLAMA = env("OLLAMA_URL", "http://ollama:11434")
-MODELO = env("OLLAMA_MODELO", "llama3.2:1b")
+MODELO = env("OLLAMA_MODELO", "llama3.2:3b")
 _historico_perguntas: dict[str, deque] = defaultdict(deque)
 
 ARQUITETURA = """\
@@ -140,7 +140,7 @@ async def responder(pergunta: str, historico: list[dict]):
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(600, connect=5)) as c:
             async with c.stream("POST", f"{OLLAMA}/api/chat", json={
-                "model": MODELO, "messages": msgs, "stream": True, "keep_alive": "60m",
+                "model": MODELO, "messages": msgs, "stream": True, "keep_alive": -1,
                 "options": {"temperature": 0.2, "num_ctx": 4096},
             }) as r:
                 if r.status_code != 200:
